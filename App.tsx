@@ -14,14 +14,21 @@ export default function App() {
 
   // Check for existing session on mount and set up auth state listener
   useEffect(() => {
+    console.log("App mounted, initializing auth...");
+    
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUserId(session.user.id);
-        setUserEmail(session.user.email || null);
-        setAccessToken(session.access_token);
-      }
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        console.log("Session check complete:", !!session);
+        if (session?.user) {
+          setUserId(session.user.id);
+          setUserEmail(session.user.email || null);
+          setAccessToken(session.access_token);
+        }
+      })
+      .catch((error) => {
+        console.error("Error getting session:", error);
+      });
 
     // Listen for auth changes
     const {
