@@ -1,0 +1,525 @@
+import { Hono } from "npm:hono";
+import { cors } from "npm:hono/cors";
+import { logger } from "npm:hono/logger";
+import * as kv from "./kv_store.tsx";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import Stripe from "npm:stripe@17.4.0";
+
+const app = new Hono();
+
+// Initialize Stripe only if key is available (lazy initialization)
+const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || '';
+let stripe: Stripe | null = null;
+
+if (stripeSecretKey) {
+  try {
+    stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2024-12-18.acacia',
+    });
+    console.log('Stripe initialized successfully');
+  } catch (err) {
+    console.error('Failed to initialize Stripe:', err);
+  }
+} else {
+  console.warn('STRIPE_SECRET_KEY not set - payment features will be unavailable');
+}
+
+// Initialize Supabase client with service role for admin operations
+const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+);
+
+// Initialize Supabase client with anon key for regular operations
+const supabaseAnon = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+);
+
+// Enable logger
+app.use('*', logger(console.log));
+
+// Enable CORS for all routes and methods
+app.use(
+  "/*",
+  cors({
+    origin: "*",
+    allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info", "x-user-token"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
+    credentials: true,
+  }),
+);
+
+// Middleware to verify authenticated user
+async function verifyUser(authHeader: string | null) {
+  console.log('[verifyUser] Starting verification...');
+  console.log('[verifyUser] Auth header:', authHeader ? `Bearer ${authHeader.substring(0, 20)}...` : 'null');
+  
+  if (!authHeader) {
+    console.error('[verifyUser] ERROR: No authorization header provided');
+    throw new Error('No authorization header');
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    console.error('[verifyUser] ERROR: No token in authorization header');
+    throw new Error('No token provided');
+  }
+
+  console.log('[verifyUser] Token extracted, length:', token.length);
+
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+  
+  if (error) {
+    console.error('[verifyUser] ERROR from getUser:', error.message);
+    throw new Error('Invalid or expired token');
+  }
+  
+  if (!user) {
+    console.error('[verifyUser] ERROR: No user returned');
+    throw new Error('Invalid or expired token');
+  }
+
+  console.log('[verifyUser] SUCCESS: User verified:', user.id);
+  return user;
+}
+
+// Auth endpoints
+app.post('/make-server-3e97d870/auth/signup', async (c) => {
+  try {
+    const { email, password, name } = await c.req.json();
+
+    if (!email || !password || !name) {
+      return c.json({ error: 'Email, password, and name are required' }, 400);
+    }
+
+    // Create user with auto-confirmed email
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      user_metadata: { name },
+      // Automatically confirm the user's email since an email server hasn't been configured
+      email_confirm: true
+    });
+
+    if (error) {
+      console.error('Signup error:', error);
+      return c.json({ error: error.message }, 400);
+    }
+
+    // Sign in to get access token
+    const { data: signInData, error: signInError } = await supabaseAnon.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError || !signInData.session) {
+      console.error('Auto sign-in error:', signInError);
+      return c.json({ error: 'Account created but sign-in failed. Please sign in manually.' }, 500);
+    }
+
+    return c.json({
+      userId: data.user.id,
+      email: data.user.email,
+      name: data.user.user_metadata.name,
+      accessToken: signInData.session.access_token
+    });
+  } catch (err: any) {
+    console.error('Signup error:', err);
+    return c.json({ error: err.message || 'Signup failed' }, 500);
+  }
+});
+
+app.post('/make-server-3e97d870/auth/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+
+    if (!email || !password) {
+      return c.json({ error: 'Email and password are required' }, 400);
+    }
+
+    const { data, error } = await supabaseAnon.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error || !data.session) {
+      console.error('Login error:', error);
+      return c.json({ error: 'Invalid email or password' }, 401);
+    }
+
+    return c.json({
+      userId: data.user.id,
+      email: data.user.email,
+      name: data.user.user_metadata?.name || 'User',
+      accessToken: data.session.access_token
+    });
+  } catch (err: any) {
+    console.error('Login error:', err);
+    return c.json({ error: err.message || 'Login failed' }, 500);
+  }
+});
+
+// Journal entries endpoints
+app.post('/make-server-3e97d870/journal/save', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const user = await verifyUser(authHeader);
+
+    const { entry } = await c.req.json();
+    
+    if (!entry || !entry.date || !entry.content) {
+      return c.json({ error: 'Invalid entry data' }, 400);
+    }
+
+    // Save entry with user ID as part of the key
+    const entryKey = `journal:${user.id}:${entry.date}`;
+    await kv.set(entryKey, entry);
+
+    return c.json({ success: true, entryId: entry.date });
+  } catch (err: any) {
+    console.error('Save journal error:', err);
+    return c.json({ error: err.message || 'Failed to save entry' }, 500);
+  }
+});
+
+// Update journal entry (for renaming)
+app.put('/make-server-3e97d870/journal/entry/:date', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const user = await verifyUser(authHeader);
+
+    const date = c.req.param('date');
+    const { title } = await c.req.json();
+    
+    const entryKey = `journal:${user.id}:${date}`;
+    const existingEntry = await kv.get(entryKey);
+    
+    if (!existingEntry) {
+      return c.json({ error: 'Entry not found' }, 404);
+    }
+
+    // Update entry with new title
+    const updatedEntry = { ...existingEntry, title };
+    await kv.set(entryKey, updatedEntry);
+
+    return c.json({ success: true, entry: updatedEntry });
+  } catch (err: any) {
+    console.error('Update journal entry error:', err);
+    return c.json({ error: err.message || 'Failed to update entry' }, 500);
+  }
+});
+
+app.get('/make-server-3e97d870/journal/entries', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const user = await verifyUser(authHeader);
+
+    // Get all entries for this user
+    const prefix = `journal:${user.id}:`;
+    const entries = await kv.getByPrefix(prefix);
+
+    return c.json({ entries: entries || [] });
+  } catch (err: any) {
+    console.error('Get journal entries error:', err);
+    return c.json({ error: err.message || 'Failed to fetch entries' }, 500);
+  }
+});
+
+app.delete('/make-server-3e97d870/journal/entry/:date', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const user = await verifyUser(authHeader);
+
+    const date = c.req.param('date');
+    const entryKey = `journal:${user.id}:${date}`;
+    
+    await kv.del(entryKey);
+
+    return c.json({ success: true });
+  } catch (err: any) {
+    console.error('Delete journal entry error:', err);
+    return c.json({ error: err.message || 'Failed to delete entry' }, 500);
+  }
+});
+
+// Admin endpoints - master access
+app.get('/make-server-3e97d870/admin/users', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const user = await verifyUser(authHeader);
+
+    // 🔒 OPTIONAL: Restrict admin access to specific email
+    // Uncomment and replace with your master admin email for production:
+    // const MASTER_ADMIN_EMAIL = 'your-master-admin@email.com';
+    // if (user.email !== MASTER_ADMIN_EMAIL) {
+    //   return c.json({ error: 'Admin access denied. Contact administrator.' }, 403);
+    // }
+
+    const { data: users, error } = await supabaseAdmin.auth.admin.listUsers();
+
+    if (error) {
+      throw error;
+    }
+
+    return c.json({ 
+      users: users.users.map(u => ({
+        id: u.id,
+        email: u.email,
+        name: u.user_metadata?.name,
+        createdAt: u.created_at
+      }))
+    });
+  } catch (err: any) {
+    console.error('Admin get users error:', err);
+    return c.json({ error: err.message || 'Failed to fetch users' }, 500);
+  }
+});
+
+app.get('/make-server-3e97d870/admin/user/:userId/entries', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const user = await verifyUser(authHeader);
+
+    // 🔒 OPTIONAL: Restrict admin access to specific email
+    // Uncomment and replace with your master admin email for production:
+    // const MASTER_ADMIN_EMAIL = 'your-master-admin@email.com';
+    // if (user.email !== MASTER_ADMIN_EMAIL) {
+    //   return c.json({ error: 'Admin access denied. Contact administrator.' }, 403);
+    // }
+
+    const userId = c.req.param('userId');
+    const prefix = `journal:${userId}:`;
+    const entries = await kv.getByPrefix(prefix);
+
+    return c.json({ entries: entries || [] });
+  } catch (err: any) {
+    console.error('Admin get user entries error:', err);
+    return c.json({ error: err.message || 'Failed to fetch user entries' }, 500);
+  }
+});
+
+// Health check endpoint
+app.get("/make-server-3e97d870/health", (c) => {
+  return c.json({ status: "ok" });
+});
+
+// AI Journal Assistant endpoint
+app.post('/make-server-3e97d870/ai/prompt', async (c) => {
+  try {
+    console.log('=== AI PROMPT ENDPOINT CALLED ===');
+    
+    // Read user token from custom header instead of Authorization
+    const userToken = c.req.header('x-user-token');
+    console.log('User token present:', !!userToken);
+    
+    // Verify the user with the custom token header
+    const user = await verifyUser(userToken ? `Bearer ${userToken}` : null);
+    console.log('User verified:', user.id);
+
+    const { currentContent } = await c.req.json();
+    console.log('Current content length:', currentContent?.length || 0);
+
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    console.log('OpenAI API key present:', !!openaiApiKey);
+    console.log('OpenAI API key length:', openaiApiKey?.length || 0);
+    console.log('OpenAI API key starts with:', openaiApiKey?.substring(0, 10));
+    
+    if (!openaiApiKey) {
+      console.error('ERROR: OPENAI_API_KEY not found in environment');
+      return c.json({ error: 'AI service not configured' }, 503);
+    }
+
+    console.log('Making request to OpenAI...');
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini', // Using gpt-4o-mini for better accessibility and cost-efficiency
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a compassionate journaling assistant. Provide thoughtful, deep prompts to help someone reflect on their day, emotions, and personal growth. Keep prompts concise (1-2 sentences) and encouraging.'
+          },
+          {
+            role: 'user',
+            content: currentContent 
+              ? `Based on what I've written so far: "${currentContent.substring(0, 200)}..." - suggest a follow-up question or reflection prompt to help me go deeper.`
+              : 'Give me a thoughtful journal prompt for evening reflection.'
+          }
+        ],
+        max_tokens: 100,
+        temperature: 0.8
+      })
+    });
+
+    console.log('OpenAI response status:', openaiResponse.status);
+    console.log('OpenAI response headers:', Object.fromEntries(openaiResponse.headers.entries()));
+
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+      console.error('OpenAI API error response:', errorText);
+      
+      let errorJson;
+      try {
+        errorJson = JSON.parse(errorText);
+        console.error('OpenAI error parsed:', JSON.stringify(errorJson, null, 2));
+      } catch {
+        console.error('Could not parse OpenAI error as JSON');
+      }
+      
+      // Return more detailed error
+      return c.json({ 
+        error: 'OpenAI API error', 
+        details: errorJson || errorText,
+        status: openaiResponse.status 
+      }, 500);
+    }
+
+    const data = await openaiResponse.json();
+    console.log('OpenAI response data:', JSON.stringify(data, null, 2));
+    
+    const prompt = data.choices[0].message.content.trim();
+    console.log('Generated prompt:', prompt);
+
+    return c.json({ prompt });
+  } catch (err: any) {
+    console.error('AI prompt generation error:', err);
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    return c.json({ 
+      error: err.message || 'Failed to generate prompt',
+      details: err.toString()
+    }, 500);
+  }
+});
+
+// Stripe Payment Endpoints
+
+// Create Stripe checkout session for $5 one-time payment
+app.post('/make-server-3e97d870/payment/create-checkout', async (c) => {
+  try {
+    const { email, userId } = await c.req.json();
+    
+    if (!email) {
+      return c.json({ error: 'Email is required' }, 400);
+    }
+
+    if (!stripe) {
+      console.error('Stripe not initialized');
+      return c.json({ error: 'Payment service not configured' }, 503);
+    }
+
+    // Get the app URL from environment or use default
+    const appUrl = Deno.env.get('APP_URL') || 'http://localhost:5173';
+
+    // Create Stripe checkout session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'NightPage Pro - Lifetime Access',
+              description: 'Pay once. No subscriptions. No noise. Lifetime access to all features.',
+            },
+            unit_amount: 500, // $5.00 in cents
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${appUrl}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}?payment=cancelled`,
+      customer_email: email,
+      metadata: {
+        userId: userId || '',
+        email: email,
+      },
+    });
+
+    console.log('Stripe checkout session created:', session.id);
+    return c.json({ sessionId: session.id, url: session.url });
+  } catch (err: any) {
+    console.error('Create checkout session error:', err);
+    return c.json({ error: err.message || 'Failed to create checkout session' }, 500);
+  }
+});
+
+// Verify payment status
+app.post('/make-server-3e97d870/payment/verify', async (c) => {
+  try {
+    const { sessionId } = await c.req.json();
+    
+    if (!sessionId) {
+      return c.json({ error: 'Session ID is required' }, 400);
+    }
+
+    if (!stripe) {
+      console.error('Stripe not initialized');
+      return c.json({ error: 'Payment service not configured' }, 503);
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    if (session.payment_status === 'paid') {
+      const email = session.customer_email || session.metadata?.email;
+      const userId = session.metadata?.userId;
+
+      // If userId is provided, update user metadata
+      if (userId) {
+        await supabaseAdmin.auth.admin.updateUserById(userId, {
+          user_metadata: {
+            isPro: true,
+            paymentDate: new Date().toISOString(),
+            stripeSessionId: sessionId,
+          }
+        });
+        console.log(`User ${userId} upgraded to Pro`);
+      }
+
+      return c.json({ 
+        success: true, 
+        isPro: true,
+        email: email,
+        userId: userId 
+      });
+    }
+
+    return c.json({ success: false, isPro: false });
+  } catch (err: any) {
+    console.error('Verify payment error:', err);
+    return c.json({ error: err.message || 'Failed to verify payment' }, 500);
+  }
+});
+
+// Check user's pro status
+app.get('/make-server-3e97d870/payment/status', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    
+    // Allow checking without auth for trial users
+    if (!authHeader) {
+      return c.json({ isPro: false });
+    }
+
+    const user = await verifyUser(authHeader);
+    const isPro = user.user_metadata?.isPro === true;
+
+    return c.json({ 
+      isPro,
+      paymentDate: user.user_metadata?.paymentDate || null
+    });
+  } catch (err: any) {
+    // If verification fails, assume free trial
+    return c.json({ isPro: false });
+  }
+});
+
+Deno.serve(app.fetch);
