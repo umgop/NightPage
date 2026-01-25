@@ -19,6 +19,58 @@ const MOOD_VIDEO_MAP: Record<string, string> = {
   nocturne: DEFAULT_NARUTO_VIDEO_ID,
 };
 
+// Optional: map moods to direct audio file URLs (prefer self-hosted or permissively licensed files).
+// Example: { calm: 'https://example.com/samidare.mp3', creative: 'https://...' }
+// If a mood has an audio URL, the player will use an HTMLAudioElement (audio-only).
+const MOOD_AUDIO_MAP: Record<string, string> = {
+  calm: '',
+  creative: '',
+  focus: '',
+  melancholy: '',
+  energized: '',
+  nocturne: '',
+};
+
+// Playlist tracks split by timestamps (title + start second)
+const PLAYLIST_TRACKS: Array<{ title: string; start: number }> = [
+  { title: 'Floating Dead Leaves', start: 1 },
+  { title: 'Morning', start: 126 },
+  { title: 'Silent Song', start: 216 },
+  { title: "I've Seen too Much", start: 368 },
+  { title: 'Daymare', start: 482 },
+  { title: 'Alone', start: 599 },
+  { title: 'Rain from a Cloudless Sky', start: 697 },
+  { title: 'No Home', start: 832 },
+  { title: 'Peaceful', start: 988 },
+  { title: 'Shirohae', start: 1119 },
+  { title: 'Hinata vs Neji', start: 1281 },
+  { title: 'Determination', start: 1470 },
+  { title: 'Loneliness', start: 1582 },
+  { title: 'Little Song', start: 1704 },
+  { title: 'Cloudiness', start: 1799 },
+  { title: 'Autumn Light Chrysanthemum', start: 1976 },
+  { title: 'Halo', start: 2074 },
+  { title: 'Snow', start: 2153 },
+  { title: 'The Day', start: 2266 },
+  { title: 'Recollection', start: 2392 },
+  { title: 'Byakuya', start: 2492 },
+  { title: 'Colourfull Mist', start: 2579 },
+  { title: 'Swaying Necklace', start: 2710 },
+  { title: 'Oh! Student and Teacher Affection', start: 2821 },
+  { title: 'Comet', start: 3014 },
+  { title: 'Nostalgia', start: 3139 },
+];
+
+// Map moods to a starting track index (spread across playlist)
+const MOOD_TRACK_START_INDEX: Record<string, number> = {
+  calm: 0,
+  creative: 4,
+  focus: 8,
+  melancholy: 12,
+  energized: 16,
+  nocturne: 20,
+};
+
 // Mood-based audio generator inspired by brain.fm
 class MoodBasedAudioGenerator {
   private audioContext: AudioContext | null = null;
@@ -196,20 +248,55 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
   const [currentMood, setCurrentMood] = useState('calm');
   const [isMuted, setIsMuted] = useState(false);
   const [showMoodSelector, setShowMoodSelector] = useState(false);
+  const [userInteracted, setUserInteracted] = useState(false);
   const audioGeneratorRef = useRef<MoodBasedAudioGenerator | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(MOOD_TRACK_START_INDEX['calm'] || 0);
 
   const selectedMood = moods.find(m => m.id === currentMood) || moods[0];
 
-  // Control audio playback: we embed the Naruto YouTube video/playlist
-  // and stop the generative ambient audio (defensive - don't start it).
+  // Control audio playback: prefer a direct audio URL per mood, fall back to YouTube iframe.
   useEffect(() => {
-    // Ensure any generator is stopped when we switch modes
     audioGeneratorRef.current?.stop();
-  }, [isPlaying, isMuted, currentMood]);
+
+    const audioUrl = MOOD_AUDIO_MAP[currentMood];
+
+    if (isPlaying && !isMuted && userInteracted && audioUrl) {
+      if (!audioRef.current) audioRef.current = new Audio();
+      try {
+        audioRef.current.src = audioUrl;
+        audioRef.current.loop = true;
+        audioRef.current.volume = 0.12;
+        audioRef.current.play().catch(() => {
+          // ignore play errors (autoplay policies)
+        });
+      } catch (e) {
+        // ignore
+      }
+      return () => {
+        try {
+          audioRef.current?.pause();
+          audioRef.current = null;
+        } catch (e) {}
+      };
+    }
+
+    // If we get here, either not playing or no audioUrl for mood — ensure HTMLAudio is stopped.
+    if (!isPlaying || isMuted || !userInteracted || !audioUrl) {
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+        } catch (e) {}
+        audioRef.current = null;
+      }
+    }
+  }, [isPlaying, isMuted, currentMood, userInteracted]);
 
   const selectMood = (moodId: string) => {
     setCurrentMood(moodId);
     setShowMoodSelector(false);
+    const idx = MOOD_TRACK_START_INDEX[moodId] ?? 0;
+    setCurrentTrackIndex(idx % PLAYLIST_TRACKS.length);
   };
 
   const toggleMute = () => {
@@ -229,7 +316,11 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
     >
       {/* Music icon and mood info */}
       <button
-        onClick={() => setShowMoodSelector(!showMoodSelector)}
+        onClick={(e) => {
+          // Mark that the user interacted so autoplay is allowed by browsers
+          setUserInteracted(true);
+          setShowMoodSelector(!showMoodSelector);
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -424,9 +515,11 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
         </>
       )}
       {/* Hidden YouTube embed for Naruto-themed tracks. It will autoplay/loop when audio is enabled. */}
-      {isPlaying && !isMuted && (() => {
+      {isPlaying && !isMuted && userInteracted && (() => {
         const videoId = MOOD_VIDEO_MAP[currentMood] || DEFAULT_NARUTO_VIDEO_ID;
-        const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`;
+        const track = PLAYLIST_TRACKS[currentTrackIndex] || PLAYLIST_TRACKS[0];
+        const start = track.start || 0;
+        const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&start=${start}&loop=1&playlist=${videoId}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`;
         return (
           <iframe
             key={videoId}
