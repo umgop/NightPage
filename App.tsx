@@ -24,6 +24,12 @@ export default function App() {
           setUserId(session.user.id);
           setUserEmail(session.user.email || null);
           setAccessToken(session.access_token);
+          // Persist token so other components can access cloud APIs after reload
+          try {
+            localStorage.setItem('nightpage_access_token', session.access_token);
+          } catch (e) {
+            console.warn('Failed to persist access token to localStorage', e);
+          }
         }
       })
       .catch((error) => {
@@ -38,10 +44,20 @@ export default function App() {
         setUserId(session.user.id);
         setUserEmail(session.user.email || null);
         setAccessToken(session.access_token);
+        try {
+          localStorage.setItem('nightpage_access_token', session.access_token);
+        } catch (e) {
+          console.warn('Failed to persist access token to localStorage', e);
+        }
       } else {
         setUserId(null);
         setUserEmail(null);
         setAccessToken(null);
+        try {
+          localStorage.removeItem('nightpage_access_token');
+        } catch (e) {
+          console.warn('Failed to remove access token from localStorage', e);
+        }
       }
     });
 
