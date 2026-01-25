@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { BookOpen } from 'lucide-react';
 import { getFontFamily } from './FontSelector';
 
@@ -11,17 +12,27 @@ interface JournalProps {
   selectedEffect: string;
 }
 
-function escapeHtmlToText(html: string) {
-  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(html);
-  if (looksLikeHtml) return html;
-
-  return html
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-    .replace(/\n/g, '<br/>');
+function sanitizeForDisplay(input: string) {
+  // Use DOMPurify to sanitize user content before rendering into innerHTML.
+  // Allow only a limited set of tags and attributes to prevent XSS.
+  try {
+    return DOMPurify.sanitize(input, {
+      ALLOWED_TAGS: [
+        'a', 'b', 'i', 'em', 'strong', 'u', 'p', 'br', 'ul', 'ol', 'li', 'img'
+      ],
+      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'width', 'height', 'style'],
+      ALLOWED_URI_REGEXP: /^(https?:|data:image\/)/**/
+    });
+  } catch (e) {
+    // Fallback: escape critical characters
+    return input
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+      .replace(/\n/g, '<br/>');
+  }
 }
 
 export function Journal({
@@ -49,7 +60,7 @@ export function Journal({
 
   const [selectedImg, setSelectedImg] = useState<HTMLImageElement | null>(null);
 
-  const normalizedHtml = useMemo(() => escapeHtmlToText(content || ''), [content]);
+  const normalizedHtml = useMemo(() => sanitizeForDisplay(content || ''), [content]);
 
   useEffect(() => {
     if (editorRef.current && !isDisabled) {

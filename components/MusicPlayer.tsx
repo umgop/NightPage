@@ -1,19 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Music, Volume2, VolumeX, Sparkles, Cloud, Heart, Zap, Moon, ArrowRight } from 'lucide-react';
+import { Music, Volume2, VolumeX, Sparkles, Cloud, Heart, Zap, Moon } from 'lucide-react';
 
 interface MusicPlayerProps {
   isPlaying: boolean;
 }
 
-// Subtle beat URLs (use your own hosted low-volume loops)
-const LOFI_BEATS: Record<string, string> = {
-  calm: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-  creative: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-  focus: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-  melancholy: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
-  energized: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3',
-  nocturne: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3',
-};
+// YouTube video to use for Naruto-themed tracks (will be embedded/looped)
+// Video ID provided by user: hFxCDbiPWJk
+const NARUTO_VIDEO_ID = 'hFxCDbiPWJk';
 
 // Mood-based audio generator inspired by brain.fm
 class MoodBasedAudioGenerator {
@@ -44,35 +38,8 @@ class MoodBasedAudioGenerator {
         harmonics: 3,
         noiseAmount: 0.015,
       },
-      creative: {
-        frequencies: [261.63, 293.66, 329.63, 392, 440], // C Major scale
-        waveType: 'triangle' as OscillatorType,
-        tempo: 1.2,
-        harmonics: 4,
-        noiseAmount: 0.012,
-      },
-      focus: {
-        frequencies: [110, 146.83, 220, 293.66], // Binaural-inspired
-        waveType: 'sine' as OscillatorType,
-        tempo: 1.0,
-        harmonics: 2,
-        noiseAmount: 0.01,
-      },
-      melancholy: {
-        frequencies: [220, 246.94, 277.18, 329.63], // Minor tones
-        waveType: 'sine' as OscillatorType,
-        tempo: 0.6,
-        harmonics: 3,
-        noiseAmount: 0.02,
-      },
-      energized: {
-        frequencies: [293.66, 349.23, 392, 440, 493.88], // Uplifting progression
-        waveType: 'sawtooth' as OscillatorType,
-        tempo: 1.5,
-        harmonics: 4,
-        noiseAmount: 0.012,
-      },
-      nocturne: {
+                    {/* beat option removed */}
+                  </div>
         frequencies: [130.81, 164.81, 196, 246.94], // Deep night tones
         waveType: 'sine' as OscillatorType,
         tempo: 0.5,
@@ -192,52 +159,16 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
   const [currentMood, setCurrentMood] = useState('calm');
   const [isMuted, setIsMuted] = useState(false);
   const [showMoodSelector, setShowMoodSelector] = useState(false);
-  const [beatEnabled, setBeatEnabled] = useState(false);
-  const previousMoodRef = useRef<string | null>(null);
   const audioGeneratorRef = useRef<MoodBasedAudioGenerator | null>(null);
-  const audioBeatRef = useRef<HTMLAudioElement | null>(null);
 
   const selectedMood = moods.find(m => m.id === currentMood) || moods[0];
 
-  // Initialize audio generator
+  // Control audio playback: we embed the Naruto YouTube video/playlist
+  // and stop the generative ambient audio (defensive - don't start it).
   useEffect(() => {
-    audioGeneratorRef.current = new MoodBasedAudioGenerator();
-    
-    return () => {
-      audioGeneratorRef.current?.stop();
-      if (audioBeatRef.current) {
-        audioBeatRef.current.pause();
-        audioBeatRef.current = null;
-      }
-    };
-  }, []);
-
-  // Control audio playback
-  useEffect(() => {
-    // Handle synthetic ambient audio (always on when playing & unmuted)
-    if (isPlaying && !isMuted) {
-      audioGeneratorRef.current?.start(currentMood);
-    } else {
-      audioGeneratorRef.current?.stop();
-    }
-
-    // Handle subtle beat layer (optional)
-    if (!beatEnabled || isMuted || !isPlaying) {
-      if (audioBeatRef.current) audioBeatRef.current.pause();
-      return;
-    }
-
-    if (!audioBeatRef.current) {
-      audioBeatRef.current = new Audio();
-      audioBeatRef.current.loop = true;
-      audioBeatRef.current.volume = 0.08; // extra subtle
-    }
-
-    audioBeatRef.current.src = LOFI_BEATS[currentMood] || LOFI_BEATS.calm;
-    audioBeatRef.current.play().catch(() => {
-      /* ignore play errors (autoplay restrictions) */
-    });
-  }, [isPlaying, isMuted, currentMood, beatEnabled]);
+    // Ensure any generator is stopped when we switch modes
+    audioGeneratorRef.current?.stop();
+  }, [isPlaying, isMuted, currentMood]);
 
   const selectMood = (moodId: string) => {
     setCurrentMood(moodId);
@@ -248,24 +179,7 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
     setIsMuted(!isMuted);
   };
 
-  const enableBeatForMood = (moodId: string) => {
-    previousMoodRef.current = currentMood;
-    setCurrentMood(moodId);
-    setBeatEnabled(true);
-  };
-
-  const handleArrowClick = (moodId: string) => {
-    if (beatEnabled && currentMood === moodId) {
-      if (previousMoodRef.current) {
-        setCurrentMood(previousMoodRef.current);
-      }
-      setBeatEnabled(false);
-      setShowMoodSelector(false);
-      return;
-    }
-    enableBeatForMood(moodId);
-    setShowMoodSelector(false);
-  };
+  // Beat option removed per user request.
 
   return (
     <div
@@ -404,7 +318,6 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
               {moods.map((mood) => {
                 const Icon = mood.icon;
                 const isSelected = mood.id === currentMood;
-                const isBeatActive = beatEnabled && currentMood === mood.id;
                 return (
                   <div key={mood.id} style={{ display: 'flex', alignItems: 'stretch' }}>
                     <button
@@ -454,35 +367,7 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
                         )}
                       </div>
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleArrowClick(mood.id);
-                      }}
-                      style={{
-                        width: 48,
-                        border: 'none',
-                        background: isBeatActive ? 'rgba(42, 38, 37, 0.9)' : 'transparent',
-                        borderLeft: '1px solid rgba(42, 38, 37, 0.6)',
-                        color: isBeatActive ? '#f2f4f3' : 'rgba(138, 129, 128, 0.8)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'background-color 0.2s ease'
-                      }}
-                      title={isBeatActive ? 'Beat on' : 'Add subtle beat'}
-                      onMouseEnter={(e) => {
-                        const el = e.currentTarget as HTMLButtonElement;
-                        if (!isBeatActive) el.style.background = 'rgba(42, 38, 37, 0.6)';
-                      }}
-                      onMouseLeave={(e) => {
-                        const el = e.currentTarget as HTMLButtonElement;
-                        el.style.background = isBeatActive ? 'rgba(42, 38, 37, 0.9)' : 'transparent';
-                      }}
-                    >
-                      <ArrowRight style={{ width: 16, height: 16 }} />
-                    </button>
+                    {/* beat option removed */}
                   </div>
                 );
               })}
@@ -500,6 +385,16 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
             </div>
           </div>
         </>
+      )}
+      {/* Hidden YouTube embed for Naruto-themed tracks. It will autoplay/loop when audio is enabled. */}
+      {isPlaying && !isMuted && (
+        <iframe
+          title="Naruto Music"
+          src={`https://www.youtube.com/embed/${NARUTO_VIDEO_ID}?autoplay=1&loop=1&playlist=${NARUTO_VIDEO_ID}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`}
+          style={{ width: 0, height: 0, border: 0 }}
+          allow="autoplay; encrypted-media"
+          sandbox="allow-same-origin allow-scripts allow-presentation"
+        />
       )}
     </div>
   );

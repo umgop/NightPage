@@ -40,10 +40,12 @@ const supabaseAnon = createClient(
 app.use('*', logger(console.log));
 
 // Enable CORS for all routes and methods
+// Harden CORS: only allow configured origin (set ORIGIN env var) or the production domain.
+const allowedOrigin = Deno.env.get('ORIGIN') || 'https://nightpage.space';
 app.use(
   "/*",
   cors({
-    origin: "*",
+    origin: allowedOrigin,
     allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info", "x-user-token"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
@@ -51,6 +53,24 @@ app.use(
     credentials: true,
   }),
 );
+
+// Basic server-side sanitizer to remove dangerous tags/attributes before persisting.
+function sanitizeHtml(input: string) {
+  if (!input) return input;
+  // Remove script, iframe, object, embed tags
+  let out = input.replace(/<\s*(script|iframe|object|embed)[\s\S]*?>[\s\S]*?<\s*\/\s*\1\s*>/gi, '');
+  // Remove event handler attributes like onclick
+  out = out.replace(/on[a-z]+\s*=\s*"[^"]*"/gi, '');
+  out = out.replace(/on[a-z]+\s*=\s*'[^']*'/gi, '');
+  // Remove javascript: URIs
+  out = out.replace(/href\s*=\s*"javascript:[^"']*"/gi, '');
+  out = out.replace(/src\s*=\s*"javascript:[^"']*"/gi, '');
+  // Strip iframe/object/embed tags left over
+  out = out.replace(/<iframe[\s\S]*?>/gi, '');
+  out = out.replace(/<object[\s\S]*?>/gi, '');
+  out = out.replace(/<embed[\s\S]*?>/gi, '');
+  return out;
+}
 
 // Middleware to verify authenticated user
 async function verifyUser(authHeader: string | null) {
@@ -176,7 +196,9 @@ app.post('/make-server-3e97d870/journal/save', async (c) => {
 
     // Save entry with user ID as part of the key
     const entryKey = `journal:${user.id}:${entry.date}`;
-    await kv.set(entryKey, entry);
+    // Sanitize content server-side as an extra layer of defense
+    const sanitized = { ...entry, content: sanitizeHtml(String(entry.content)) };
+    await kv.set(entryKey, sanitized);
 
     return c.json({ success: true, entryId: entry.date });
   } catch (err: any) {
@@ -203,6 +225,8 @@ app.put('/make-server-3e97d870/journal/entry/:date', async (c) => {
 
     // Update entry with new title
     const updatedEntry = { ...existingEntry, title };
+    // Sanitize stored content just in case
+    if (updatedEntry.content) updatedEntry.content = sanitizeHtml(String(updatedEntry.content));
     await kv.set(entryKey, updatedEntry);
 
     return c.json({ success: true, entry: updatedEntry });
@@ -220,8 +244,10 @@ app.get('/make-server-3e97d870/journal/entries', async (c) => {
     // Get all entries for this user
     const prefix = `journal:${user.id}:`;
     const entries = await kv.getByPrefix(prefix);
+    // Ensure returned content is sanitized
+    const safe = (entries || []).map((e: any) => ({ ...e, content: sanitizeHtml(String(e?.content || '')) }));
 
-    return c.json({ entries: entries || [] });
+    return c.json({ entries: safe || [] });
   } catch (err: any) {
     console.error('Get journal entries error:', err);
     return c.json({ error: err.message || 'Failed to fetch entries' }, 500);
@@ -252,11 +278,11 @@ app.get('/make-server-3e97d870/admin/users', async (c) => {
     const user = await verifyUser(authHeader);
 
     // 🔒 OPTIONAL: Restrict admin access to specific email
-    // Uncomment and replace with your master admin email for production:
-    // const MASTER_ADMIN_EMAIL = 'your-master-admin@email.com';
-    // if (user.email !== MASTER_ADMIN_EMAIL) {
-    //   return c.json({ error: 'Admin access denied. Contact administrator.' }, 403);
-    // }
+    // Enforce admin email if set in env
+    const MASTER_ADMIN_EMAIL = Deno.env.get('MASTER_ADMIN_EMAIL');
+    if (MASTER_ADMIN_EMAIL && user.email !== MASTER_ADMIN_EMAIL) {
+      return c.json({ error: 'Admin access denied. Contact administrator.' }, 403);
+    }
 
     const { data: users, error } = await supabaseAdmin.auth.admin.listUsers();
 
