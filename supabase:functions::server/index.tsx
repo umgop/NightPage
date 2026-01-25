@@ -164,22 +164,14 @@ app.post('/make-server-3e97d870/auth/signup', rateLimitAuthMiddleware, async (c)
       return c.json({ error: error.message }, 400);
     }
 
-    // Sign in to get access token
-    const { data: signInData, error: signInError } = await supabaseAnon.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError || !signInData.session) {
-      console.error('Auto sign-in error:', signInError);
-      return c.json({ error: 'Account created but sign-in failed. Please sign in manually.' }, 500);
-    }
-
+    // Do NOT auto sign-in - user must verify email first
     return c.json({
+      success: true,
+      message: 'Account created! Please verify your email to continue.',
       userId: data.user.id,
       email: data.user.email,
       name: data.user.user_metadata.name,
-      accessToken: signInData.session.access_token
+      emailVerified: false
     });
   } catch (err: any) {
     console.error('Signup error:', err);
@@ -205,11 +197,22 @@ app.post('/make-server-3e97d870/auth/login', rateLimitAuthMiddleware, async (c) 
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
+    // Check if email is verified
+    if (!data.user.email_confirmed_at) {
+      console.warn(`Login attempt with unverified email: ${email}`);
+      return c.json({ 
+        error: 'Please verify your email before logging in.',
+        emailVerified: false,
+        userId: data.user.id
+      }, 403);
+    }
+
     return c.json({
       userId: data.user.id,
       email: data.user.email,
       name: data.user.user_metadata?.name || 'User',
-      accessToken: data.session.access_token
+      accessToken: data.session.access_token,
+      emailVerified: true
     });
   } catch (err: any) {
     console.error('Login error:', err);
