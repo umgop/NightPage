@@ -5,9 +5,19 @@ interface MusicPlayerProps {
   isPlaying: boolean;
 }
 
-// YouTube video to use for Naruto-themed tracks (will be embedded/looped)
-// Video ID provided by user: hFxCDbiPWJk
-const NARUTO_VIDEO_ID = 'hFxCDbiPWJk';
+// YouTube video(s) to use for Naruto-themed tracks (will be embedded/looped)
+// Default video ID provided by user: hFxCDbiPWJk
+const DEFAULT_NARUTO_VIDEO_ID = 'hFxCDbiPWJk';
+
+// Per-mood mapping: replace values with desired YouTube video IDs (or keep the default)
+const MOOD_VIDEO_MAP: Record<string, string> = {
+  calm: DEFAULT_NARUTO_VIDEO_ID,
+  creative: DEFAULT_NARUTO_VIDEO_ID,
+  focus: DEFAULT_NARUTO_VIDEO_ID,
+  melancholy: DEFAULT_NARUTO_VIDEO_ID,
+  energized: DEFAULT_NARUTO_VIDEO_ID,
+  nocturne: DEFAULT_NARUTO_VIDEO_ID,
+};
 
 // Mood-based audio generator inspired by brain.fm
 class MoodBasedAudioGenerator {
@@ -38,8 +48,35 @@ class MoodBasedAudioGenerator {
         harmonics: 3,
         noiseAmount: 0.015,
       },
-                    {/* beat option removed */}
-                  </div>
+      creative: {
+        frequencies: [261.63, 293.66, 329.63, 392, 440], // C Major scale
+        waveType: 'triangle' as OscillatorType,
+        tempo: 1.2,
+        harmonics: 4,
+        noiseAmount: 0.012,
+      },
+      focus: {
+        frequencies: [110, 146.83, 220, 293.66], // Binaural-inspired
+        waveType: 'sine' as OscillatorType,
+        tempo: 1.0,
+        harmonics: 2,
+        noiseAmount: 0.01,
+      },
+      melancholy: {
+        frequencies: [220, 246.94, 277.18, 329.63], // Minor tones
+        waveType: 'sine' as OscillatorType,
+        tempo: 0.6,
+        harmonics: 3,
+        noiseAmount: 0.02,
+      },
+      energized: {
+        frequencies: [293.66, 349.23, 392, 440, 493.88], // Uplifting progression
+        waveType: 'sawtooth' as OscillatorType,
+        tempo: 1.5,
+        harmonics: 4,
+        noiseAmount: 0.012,
+      },
+      nocturne: {
         frequencies: [130.81, 164.81, 196, 246.94], // Deep night tones
         waveType: 'sine' as OscillatorType,
         tempo: 0.5,
@@ -387,15 +424,27 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
         </>
       )}
       {/* Hidden YouTube embed for Naruto-themed tracks. It will autoplay/loop when audio is enabled. */}
-      {isPlaying && !isMuted && (
-        <iframe
-          title="Naruto Music"
-          src={`https://www.youtube.com/embed/${NARUTO_VIDEO_ID}?autoplay=1&loop=1&playlist=${NARUTO_VIDEO_ID}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`}
-          style={{ width: 0, height: 0, border: 0 }}
-          allow="autoplay; encrypted-media"
-          sandbox="allow-same-origin allow-scripts allow-presentation"
-        />
-      )}
+      {isPlaying && !isMuted && (() => {
+        const videoId = MOOD_VIDEO_MAP[currentMood] || DEFAULT_NARUTO_VIDEO_ID;
+        const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`;
+        return (
+          <iframe
+            key={videoId}
+            title={`Naruto Music (${currentMood})`}
+            src={src}
+            style={{
+              position: 'absolute',
+              left: '-9999px',
+              width: '1px',
+              height: '1px',
+              border: 0,
+              overflow: 'hidden'
+            }}
+            allow="autoplay; encrypted-media"
+            sandbox="allow-same-origin allow-scripts allow-presentation"
+          />
+        );
+      })()}
     </div>
   );
 }
