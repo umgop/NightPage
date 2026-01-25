@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Music, Volume2, VolumeX, Sparkles, Cloud, Heart, Zap, Moon } from 'lucide-react';
+import { Music, Volume2, VolumeX, Sparkles, Cloud, Heart, Zap, Moon, ExternalLink } from 'lucide-react';
 
 interface MusicPlayerProps {
   isPlaying: boolean;
@@ -29,6 +29,7 @@ const MOOD_AUDIO_MAP: Record<string, string> = {
   melancholy: '',
   energized: '',
   nocturne: '',
+  naruto: '/naruto.mp3',
 };
 
 // Playlist tracks split by timestamps (title + start second)
@@ -61,14 +62,9 @@ const PLAYLIST_TRACKS: Array<{ title: string; start: number }> = [
   { title: 'Nostalgia', start: 3139 },
 ];
 
-// Map moods to a starting track index (spread across playlist)
+// Map moods to a starting track index (only Naruto uses the playlist, others use synthetic audio)
 const MOOD_TRACK_START_INDEX: Record<string, number> = {
-  calm: 0,
-  creative: 4,
-  focus: 8,
-  melancholy: 12,
-  energized: 16,
-  nocturne: 20,
+  naruto: 0,  // Start at beginning (0:01)
 };
 
 // Mood-based audio generator inspired by brain.fm
@@ -85,7 +81,7 @@ class MoodBasedAudioGenerator {
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     this.masterGain = this.audioContext.createGain();
     this.masterGain.connect(this.audioContext.destination);
-    this.masterGain.gain.value = 0.12;
+    this.masterGain.gain.value = 0.4;
 
     const moodConfig = this.getMoodConfig(mood);
     this.createOscillators(moodConfig);
@@ -236,42 +232,118 @@ class MoodBasedAudioGenerator {
 }
 
 const moods = [
+  { id: 'spotify', name: 'Spotify Playlist', icon: Music, description: 'Your playlist link', type: 'spotify' },
   { id: 'calm', name: 'Calm', icon: Cloud, description: 'Peaceful reflection', type: 'synthetic' },
   { id: 'creative', name: 'Creative', icon: Sparkles, description: 'Unlock ideas', type: 'synthetic' },
   { id: 'focus', name: 'Focus', icon: Zap, description: 'Deep concentration', type: 'synthetic' },
   { id: 'melancholy', name: 'Melancholy', icon: Heart, description: 'Emotional processing', type: 'synthetic' },
   { id: 'energized', name: 'Energized', icon: Zap, description: 'Uplifting thoughts', type: 'synthetic' },
   { id: 'nocturne', name: 'Nocturne', icon: Moon, description: 'Late night vibes', type: 'synthetic' },
+  { id: 'naruto', name: "Creator's Favorite", icon: Music, description: 'Naruto soundtrack', type: 'naruto' },
 ];
 
-export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
+export function MusicPlayer({ isPlaying: propIsPlaying }: MusicPlayerProps) {
   const [currentMood, setCurrentMood] = useState('calm');
   const [isMuted, setIsMuted] = useState(false);
   const [showMoodSelector, setShowMoodSelector] = useState(false);
   const [userInteracted, setUserInteracted] = useState(false);
+  const [isLocalPlaying, setIsLocalPlaying] = useState(false);
   const audioGeneratorRef = useRef<MoodBasedAudioGenerator | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(MOOD_TRACK_START_INDEX['calm'] || 0);
+  const [spotifyPlaylistUrl, setSpotifyPlaylistUrl] = useState<string | null>(null);
+  const [showSpotifyInput, setShowSpotifyInput] = useState(false);
+  const [tempSpotifyUrl, setTempSpotifyUrl] = useState<string>('');
+
+  // Use local play state if parent doesn't provide isPlaying
+  const isPlaying = propIsPlaying || isLocalPlaying;
+
+  // Initialize the audio generator on mount and load Spotify URL
+  useEffect(() => {
+    audioGeneratorRef.current = new MoodBasedAudioGenerator();
+    loadSpotifyPlaylist();
+    return () => {
+      audioGeneratorRef.current?.stop();
+    };
+  }, []);
+
+  // Load Spotify playlist URL from localStorage
+  const loadSpotifyPlaylist = () => {
+    try {
+      const stored = localStorage.getItem('nightpage_spotify_url');
+      if (stored) {
+        setSpotifyPlaylistUrl(stored);
+        setTempSpotifyUrl(stored);
+      }
+    } catch (e) {
+      console.error('Error loading Spotify URL:', e);
+    }
+  };
+
+  // Save Spotify playlist URL
+  const saveSpotifyPlaylist = () => {
+    const url = tempSpotifyUrl.trim();
+    if (!url) {
+      alert('Please enter a valid Spotify playlist URL');
+      return;
+    }
+
+    if (!url.includes('spotify.com/playlist')) {
+      alert('Please enter a valid Spotify playlist URL (e.g., https://open.spotify.com/playlist/...)');
+      return;
+    }
+
+    localStorage.setItem('nightpage_spotify_url', url);
+    setSpotifyPlaylistUrl(url);
+    setShowSpotifyInput(false);
+    selectMood('spotify');
+  };
+
+  // Delete Spotify playlist
+  const deleteSpotifyPlaylist = () => {
+    if (!confirm('Remove Spotify playlist?')) return;
+    localStorage.removeItem('nightpage_spotify_url');
+    setSpotifyPlaylistUrl(null);
+    setTempSpotifyUrl('');
+    if (currentMood === 'spotify') {
+      selectMood('calm');
+    }
+  };
+
+  // Open Spotify playlist in new window
+  const openSpotifyPlaylist = () => {
+    if (spotifyPlaylistUrl) {
+      window.open(spotifyPlaylistUrl, '_blank');
+    }
+  };
 
   const selectedMood = moods.find(m => m.id === currentMood) || moods[0];
 
-  // Control audio playback: prefer a direct audio URL per mood, fall back to YouTube iframe.
+  // Control audio playback: use synthetic generator for most moods or YouTube iframe for Naruto mood
   useEffect(() => {
     audioGeneratorRef.current?.stop();
 
     const audioUrl = MOOD_AUDIO_MAP[currentMood];
+    const isNarutoMode = currentMood === 'naruto';
+    const isSpotifyMode = currentMood === 'spotify';
 
+    // Spotify mode: don't play audio here, just open the playlist
+    if (isSpotifyMode) {
+      return;
+    }
+
+    // Play direct audio URL if available
     if (isPlaying && !isMuted && userInteracted && audioUrl) {
       if (!audioRef.current) audioRef.current = new Audio();
       try {
         audioRef.current.src = audioUrl;
         audioRef.current.loop = true;
-        audioRef.current.volume = 0.12;
-        audioRef.current.play().catch(() => {
-          // ignore play errors (autoplay policies)
+        audioRef.current.volume = 1.0;
+        audioRef.current.play().catch((err) => {
+          console.error('Audio play error:', err);
         });
       } catch (e) {
-        // ignore
+        console.error('Audio setup error:', e);
       }
       return () => {
         try {
@@ -281,7 +353,7 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
       };
     }
 
-    // If we get here, either not playing or no audioUrl for mood — ensure HTMLAudio is stopped.
+    // Stop HTMLAudio if not playing
     if (!isPlaying || isMuted || !userInteracted || !audioUrl) {
       if (audioRef.current) {
         try {
@@ -290,7 +362,22 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
         audioRef.current = null;
       }
     }
+
+    // For non-Naruto/non-Spotify moods: play synthetic generator
+    if (isPlaying && !isMuted && !isNarutoMode && !isSpotifyMode && !audioUrl) {
+      audioGeneratorRef.current?.start(currentMood);
+    }
   }, [isPlaying, isMuted, currentMood, userInteracted]);
+
+  // Seek Naruto track to the correct timestamp
+  useEffect(() => {
+    if (currentMood === 'naruto' && isPlaying && audioRef.current && audioRef.current.src) {
+      const track = PLAYLIST_TRACKS[currentTrackIndex];
+      if (track) {
+        audioRef.current.currentTime = track.start;
+      }
+    }
+  }, [currentTrackIndex, currentMood, isPlaying]);
 
   const selectMood = (moodId: string) => {
     setCurrentMood(moodId);
@@ -319,6 +406,7 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
         onClick={(e) => {
           // Mark that the user interacted so autoplay is allowed by browsers
           setUserInteracted(true);
+          setIsLocalPlaying(!isLocalPlaying);
           setShowMoodSelector(!showMoodSelector);
         }}
         style={{
@@ -397,6 +485,36 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
         )}
       </button>
 
+      {/* Next track button (Naruto only) */}
+      {currentMood === 'naruto' && isLocalPlaying && (
+        <button
+          onClick={() => {
+            const nextIdx = (currentTrackIndex + 1) % PLAYLIST_TRACKS.length;
+            setCurrentTrackIndex(nextIdx);
+          }}
+          style={{
+            color: 'rgba(163, 149, 148, 0.7)',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            fontSize: '12px',
+            transition: 'color 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.color = '#f2f4f3';
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.color = 'rgba(163, 149, 148, 0.7)';
+          }}
+          title={`Next: ${PLAYLIST_TRACKS[currentTrackIndex]?.title || 'Track'}`}
+        >
+          ⏭ {PLAYLIST_TRACKS[currentTrackIndex]?.title}
+        </button>
+      )}
+
       {/* Mood selector dropdown */}
       {showMoodSelector && (
         <>
@@ -446,10 +564,23 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
               {moods.map((mood) => {
                 const Icon = mood.icon;
                 const isSelected = mood.id === currentMood;
+                const isSpotifyMood = mood.id === 'spotify';
+                const hasSpotifyUrl = spotifyPlaylistUrl !== null;
+
+                // Skip Spotify mood if no URL set
+                if (isSpotifyMood && !hasSpotifyUrl) {
+                  return null;
+                }
+
                 return (
                   <div key={mood.id} style={{ display: 'flex', alignItems: 'stretch' }}>
                     <button
-                      onClick={() => selectMood(mood.id)}
+                      onClick={() => {
+                        if (isSpotifyMood) {
+                          openSpotifyPlaylist();
+                        }
+                        selectMood(mood.id);
+                      }}
                       style={{
                         flex: 1,
                         textAlign: 'left',
@@ -495,10 +626,194 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
                         )}
                       </div>
                     </button>
-                    {/* beat option removed */}
+                    {/* Edit/delete button for Spotify mood */}
+                    {isSpotifyMood && hasSpotifyUrl && (
+                      <>
+                        <button
+                          onClick={() => setShowSpotifyInput(true)}
+                          style={{
+                            width: '40px',
+                            padding: '0 8px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'rgba(163, 149, 148, 0.7)',
+                            cursor: 'pointer',
+                            transition: 'color 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          onMouseEnter={(e) => {
+                            const el = e.currentTarget as HTMLButtonElement;
+                            el.style.color = '#f2f4f3';
+                          }}
+                          onMouseLeave={(e) => {
+                            const el = e.currentTarget as HTMLButtonElement;
+                            el.style.color = 'rgba(163, 149, 148, 0.7)';
+                          }}
+                          title="Edit Spotify URL"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => deleteSpotifyPlaylist()}
+                          style={{
+                            width: '40px',
+                            padding: '0 8px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'rgba(163, 149, 148, 0.7)',
+                            cursor: 'pointer',
+                            transition: 'color 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          onMouseEnter={(e) => {
+                            const el = e.currentTarget as HTMLButtonElement;
+                            el.style.color = '#f2f4f3';
+                          }}
+                          onMouseLeave={(e) => {
+                            const el = e.currentTarget as HTMLButtonElement;
+                            el.style.color = 'rgba(163, 149, 148, 0.7)';
+                          }}
+                          title="Remove Spotify URL"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
                   </div>
                 );
               })}
+              {/* Spotify URL input section */}
+              {showSpotifyInput ? (
+                <div
+                  style={{
+                    padding: '12px',
+                    borderTop: '1px solid rgba(42, 38, 37, 0.6)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}
+                >
+                  <label style={{ fontSize: '12px', color: 'rgba(163, 149, 148, 0.7)' }}>
+                    Spotify Playlist URL
+                  </label>
+                  <input
+                    type="text"
+                    value={tempSpotifyUrl}
+                    onChange={(e) => setTempSpotifyUrl(e.target.value)}
+                    placeholder="https://open.spotify.com/playlist/..."
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'rgba(42, 38, 37, 0.4)',
+                      border: '1px solid rgba(163, 149, 148, 0.3)',
+                      borderRadius: '4px',
+                      color: '#f2f4f3',
+                      fontFamily: 'inherit',
+                      fontSize: '12px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => setShowSpotifyInput(false)}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'transparent',
+                        border: '1px solid rgba(163, 149, 148, 0.5)',
+                        color: 'rgba(163, 149, 148, 0.7)',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        fontFamily: 'inherit',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.borderColor = 'rgba(163, 149, 148, 0.8)';
+                        el.style.color = '#f2f4f3';
+                      }}
+                      onMouseLeave={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.borderColor = 'rgba(163, 149, 148, 0.5)';
+                        el.style.color = 'rgba(163, 149, 148, 0.7)';
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => saveSpotifyPlaylist()}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'rgba(163, 149, 148, 0.2)',
+                        border: '1px solid rgba(163, 149, 148, 0.5)',
+                        color: '#f2f4f3',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        fontFamily: 'inherit',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.background = 'rgba(163, 149, 148, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.background = 'rgba(163, 149, 148, 0.2)';
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderTop: '1px solid rgba(42, 38, 37, 0.6)'
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setShowSpotifyInput(true);
+                      setTempSpotifyUrl(spotifyPlaylistUrl || '');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'transparent',
+                      border: '1px dashed rgba(163, 149, 148, 0.5)',
+                      color: 'rgba(163, 149, 148, 0.7)',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                      fontFamily: 'inherit',
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      const el = e.currentTarget as HTMLButtonElement;
+                      el.style.borderColor = 'rgba(163, 149, 148, 0.8)';
+                      el.style.color = '#f2f4f3';
+                    }}
+                    onMouseLeave={(e) => {
+                      const el = e.currentTarget as HTMLButtonElement;
+                      el.style.borderColor = 'rgba(163, 149, 148, 0.5)';
+                      el.style.color = 'rgba(163, 149, 148, 0.7)';
+                    }}
+                  >
+                    <ExternalLink style={{ width: '14px', height: '14px' }} />
+                    Add Spotify Playlist
+                  </button>
+                </div>
+              )}
             </div>
             <div
               style={{
@@ -515,11 +830,11 @@ export function MusicPlayer({ isPlaying }: MusicPlayerProps) {
         </>
       )}
       {/* Hidden YouTube embed for Naruto-themed tracks. It will autoplay/loop when audio is enabled. */}
-      {isPlaying && !isMuted && userInteracted && (() => {
+      {isPlaying && userInteracted && currentMood === 'naruto' && (() => {
         const videoId = MOOD_VIDEO_MAP[currentMood] || DEFAULT_NARUTO_VIDEO_ID;
         const track = PLAYLIST_TRACKS[currentTrackIndex] || PLAYLIST_TRACKS[0];
         const start = track.start || 0;
-        const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&start=${start}&loop=1&playlist=${videoId}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`;
+        const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&start=${start}&loop=1&playlist=${videoId}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`;
         return (
           <iframe
             key={videoId}

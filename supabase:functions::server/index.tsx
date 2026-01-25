@@ -39,6 +39,41 @@ const supabaseAnon = createClient(
 // Enable logger
 app.use('*', logger(console.log));
 
+// Simple in-memory rate limiter for auth endpoints
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(key: string, maxAttempts: number, windowMs: number): boolean {
+  const now = Date.now();
+  const entry = rateLimitStore.get(key);
+
+  if (!entry || now > entry.resetTime) {
+    // Create new entry or reset expired one
+    rateLimitStore.set(key, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+
+  if (entry.count >= maxAttempts) {
+    return false; // Rate limited
+  }
+
+  entry.count++;
+  return true;
+}
+
+// Rate limiting middleware for auth endpoints (5 attempts per minute)
+async function rateLimitAuthMiddleware(c: any, next: any) {
+  const ip = c.req.header('x-forwarded-for') || c.req.header('cf-connecting-ip') || 'unknown';
+  const endpoint = c.req.path;
+  const key = `${ip}:${endpoint}`;
+
+  if (!checkRateLimit(key, 5, 60000)) { // 5 attempts per 60 seconds
+    console.warn(`[RATE_LIMIT] Blocked ${ip} on ${endpoint}`);
+    return c.json({ error: 'Too many attempts. Please try again later.' }, 429);
+  }
+
+  await next();
+}
+
 // Enable CORS for all routes and methods
 // Harden CORS: only allow configured origin (set ORIGIN env var) or the production domain.
 const allowedOrigin = Deno.env.get('ORIGIN') || 'https://nightpage.space';
@@ -107,7 +142,7 @@ async function verifyUser(authHeader: string | null) {
 }
 
 // Auth endpoints
-app.post('/make-server-3e97d870/auth/signup', async (c) => {
+app.post('/make-server-3e97d870/auth/signup', rateLimitAuthMiddleware, async (c) => {
   try {
     const { email, password, name } = await c.req.json();
 
@@ -115,13 +150,13 @@ app.post('/make-server-3e97d870/auth/signup', async (c) => {
       return c.json({ error: 'Email, password, and name are required' }, 400);
     }
 
-    // Create user with auto-confirmed email
+    // Create user with email verification required
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       user_metadata: { name },
-      // Automatically confirm the user's email since an email server hasn't been configured
-      email_confirm: true
+      // Email verification is required - user must verify before full access
+      email_confirm: false
     });
 
     if (error) {
@@ -152,7 +187,7 @@ app.post('/make-server-3e97d870/auth/signup', async (c) => {
   }
 });
 
-app.post('/make-server-3e97d870/auth/login', async (c) => {
+app.post('/make-server-3e97d870/auth/login', rateLimitAuthMiddleware, async (c) => {
   try {
     const { email, password } = await c.req.json();
 
@@ -332,7 +367,7 @@ app.get("/make-server-3e97d870/health", (c) => {
   return c.json({ status: "ok" });
 });
 
-// AI Journal Assistant endpoint
+// AI Journal Assistant endpoint with daily rate limiting (3 prompts per day)
 app.post('/make-server-3e97d870/ai/prompt', async (c) => {
   try {
     console.log('=== AI PROMPT ENDPOINT CALLED ===');
@@ -344,6 +379,23 @@ app.post('/make-server-3e97d870/ai/prompt', async (c) => {
     // Verify the user with the custom token header
     const user = await verifyUser(userToken ? `Bearer ${userToken}` : null);
     console.log('User verified:', user.id);
+
+    // Check rate limit (3 prompts per day)
+    const now = new Date();
+    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const rateLimitKey = `ai_prompts:${user.id}:${today}`;
+    
+    let promptCount = await kv.get(rateLimitKey) || { count: 0 };
+    if (typeof promptCount === 'object' && 'count' in promptCount) {
+      promptCount = promptCount.count;
+    }
+
+    console.log('Prompts used today:', promptCount);
+
+    if (promptCount >= 3) {
+      console.warn(`[RATE_LIMIT] User ${user.id} has exceeded 3 prompts for today`);
+      return c.json({ error: 'Daily prompt limit reached. Come back tomorrow!' }, 429);
+    }
 
     const { currentContent } = await c.req.json();
     console.log('Current content length:', currentContent?.length || 0);
@@ -412,6 +464,11 @@ app.post('/make-server-3e97d870/ai/prompt', async (c) => {
     
     const prompt = data.choices[0].message.content.trim();
     console.log('Generated prompt:', prompt);
+
+    // Increment prompt count for today
+    const rateLimitKey = `ai_prompts:${user.id}:${today}`;
+    await kv.set(rateLimitKey, { count: promptCount + 1 });
+    console.log('Updated prompt count for user:', promptCount + 1);
 
     return c.json({ prompt });
   } catch (err: any) {

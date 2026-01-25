@@ -14,6 +14,8 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [suggestion, setSuggestion] = useState('');
+  const [promptsRemaining, setPromptsRemaining] = useState(3);
+  const [isRateLimited, setIsRateLimited] = useState(false);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -27,6 +29,11 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
     return;
   }, [isOpen]);
 
+  // Load prompts remaining from localStorage on mount
+  useEffect(() => {
+    loadPromptsRemaining();
+  }, []);
+
   const quickPrompts = [
     "What moments from today am I grateful for?",
     "What challenged me today and what did I learn from it?",
@@ -38,7 +45,74 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
     "What am I looking forward to tomorrow?"
   ];
 
+  // Check and load remaining prompts for today
+  const loadPromptsRemaining = () => {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const stored = localStorage.getItem('nightpage_ai_prompts');
+      
+      if (!stored) {
+        // First time, set to 3 prompts
+        localStorage.setItem('nightpage_ai_prompts', JSON.stringify({ date: today, remaining: 3 }));
+        setPromptsRemaining(3);
+        setIsRateLimited(false);
+        return;
+      }
+
+      const data = JSON.parse(stored);
+      if (data.date !== today) {
+        // New day, reset to 3
+        localStorage.setItem('nightpage_ai_prompts', JSON.stringify({ date: today, remaining: 3 }));
+        setPromptsRemaining(3);
+        setIsRateLimited(false);
+      } else {
+        // Same day, use stored remaining
+        setPromptsRemaining(data.remaining);
+        setIsRateLimited(data.remaining <= 0);
+      }
+    } catch (e) {
+      console.error('Error loading prompts remaining:', e);
+      setPromptsRemaining(3);
+    }
+  };
+
+  // Decrement prompts and check if rate limited
+  const decrementPrompts = (): boolean => {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const stored = localStorage.getItem('nightpage_ai_prompts');
+      const data = stored ? JSON.parse(stored) : { date: today, remaining: 3 };
+
+      if (data.date !== today) {
+        // New day
+        data.date = today;
+        data.remaining = 2; // Use 1, have 2 left
+      } else if (data.remaining <= 0) {
+        return false; // Already rate limited
+      } else {
+        data.remaining -= 1;
+      }
+
+      localStorage.setItem('nightpage_ai_prompts', JSON.stringify(data));
+      setPromptsRemaining(data.remaining);
+      setIsRateLimited(data.remaining <= 0);
+      return true;
+    } catch (e) {
+      console.error('Error updating prompts:', e);
+      return false;
+    }
+  };
+
   const getAISuggestion = async () => {
+    // Check rate limit first
+    if (promptsRemaining <= 0) {
+      setSuggestion('You\'ve used all 3 AI prompts for today. Come back tomorrow for more! 🌙');
+      setIsRateLimited(true);
+      return;
+    }
+
     setLoading(true);
     setSuggestion('');
 
@@ -72,6 +146,13 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
 
       console.log('Response status:', response.status);
 
+      if (response.status === 429) {
+        // Rate limited by server
+        setSuggestion('You\'ve used all 3 AI prompts for today. Come back tomorrow for more! 🌙');
+        setIsRateLimited(true);
+        return;
+      }
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('AI API error response:', response.status, errorText);
@@ -89,6 +170,9 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
 
       const data = await response.json();
       console.log('AI response received:', data);
+      
+      // Successfully got a prompt, decrement counter
+      decrementPrompts();
       setSuggestion(data.prompt);
     } catch (err: any) {
       console.error('AI suggestion error:', err);
@@ -254,47 +338,64 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
                     >
                       AI-Powered Prompt
                     </h3>
-                    <button
-                      onClick={getAISuggestion}
-                      disabled={loading}
-                      style={{
-                        padding: '4px 12px',
-                        background: 'transparent',
-                        border: '1px solid rgba(74, 71, 70, 0.6)',
-                        color: 'rgba(163, 149, 148, 0.7)',
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        opacity: loading ? 0.5 : 1,
-                        transition: 'all 0.2s ease',
-                        fontFamily: 'inherit'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!loading) {
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          color: isRateLimited ? 'rgba(200, 100, 100, 0.8)' : 'rgba(163, 149, 148, 0.6)',
+                          background: isRateLimited ? 'rgba(200, 100, 100, 0.1)' : 'rgba(163, 149, 148, 0.1)',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {promptsRemaining}/{3}
+                      </span>
+                      <button
+                        onClick={getAISuggestion}
+                        disabled={loading || promptsRemaining <= 0}
+                        style={{
+                          padding: '4px 12px',
+                          background: promptsRemaining <= 0 ? 'rgba(74, 71, 70, 0.3)' : 'transparent',
+                          border: `1px solid ${promptsRemaining <= 0 ? 'rgba(74, 71, 70, 0.3)' : 'rgba(74, 71, 70, 0.6)'}`,
+                          color: promptsRemaining <= 0 ? 'rgba(163, 149, 148, 0.4)' : 'rgba(163, 149, 148, 0.7)',
+                          cursor: loading || promptsRemaining <= 0 ? 'not-allowed' : 'pointer',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          opacity: loading || promptsRemaining <= 0 ? 0.5 : 1,
+                          transition: 'all 0.2s ease',
+                          fontFamily: 'inherit'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!loading && promptsRemaining > 0) {
+                            const el = e.currentTarget as HTMLButtonElement;
+                            el.style.background = 'rgba(42, 38, 37, 0.6)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
                           const el = e.currentTarget as HTMLButtonElement;
-                          el.style.background = 'rgba(42, 38, 37, 0.6)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        const el = e.currentTarget as HTMLButtonElement;
-                        el.style.background = 'transparent';
-                      }}
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
-                          Thinking...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles style={{ width: '12px', height: '12px' }} />
-                          Generate
-                        </>
-                      )}
-                    </button>
+                          el.style.background = promptsRemaining <= 0 ? 'rgba(74, 71, 70, 0.3)' : 'transparent';
+                        }}
+                        title={promptsRemaining <= 0 ? 'Come back tomorrow for more prompts!' : 'Generate an AI prompt'}
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
+                            Thinking...
+                          </>
+                        ) : promptsRemaining <= 0 ? (
+                          <>❌ No prompts left</>
+                        ) : (
+                          <>
+                            <Sparkles style={{ width: '12px', height: '12px' }} />
+                            Generate
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                   {suggestion ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

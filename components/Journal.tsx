@@ -21,7 +21,7 @@ function sanitizeForDisplay(input: string) {
         'a', 'b', 'i', 'em', 'strong', 'u', 'p', 'br', 'ul', 'ol', 'li', 'img'
       ],
       ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'width', 'height', 'style'],
-      ALLOWED_URI_REGEXP: /^(https?:|data:image\/)/**/
+      ALLOWED_URI_REGEXP: /^(https?:|data:image\/)\//
     });
   } catch (e) {
     // Fallback: escape critical characters
