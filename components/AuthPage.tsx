@@ -38,20 +38,30 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
     try {
       if (isLogin) {
-        // Sign in with Supabase directly
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        // Call backend endpoint for login (enforces email verification)
+        const response = await fetch(
+          `${window.location.origin}/.netlify/functions/make-server-3e97d870/auth/login`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          }
+        );
 
-        if (signInError || !data.session) {
-          throw new Error(signInError?.message || 'Invalid email or password');
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Login failed');
+        }
+
+        if (!data.emailVerified) {
+          throw new Error('Please verify your email before logging in.');
         }
 
         onAuthSuccess(
-          data.user.id,
-          data.user.email || email,
-          data.session.access_token
+          data.userId,
+          data.email,
+          data.accessToken
         );
       } else {
         // Validate password strength for signup
@@ -59,23 +69,20 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           throw new Error('Password does not meet security requirements');
         }
 
-        // Signup with email verification
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name: name,
-            },
-          },
-        });
+        // Call backend endpoint for signup (sends verification email)
+        const response = await fetch(
+          `${window.location.origin}/.netlify/functions/make-server-3e97d870/auth/signup`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, name }),
+          }
+        );
 
-        if (signUpError) {
-          throw new Error(signUpError.message || 'Signup failed');
-        }
+        const data = await response.json();
 
-        if (!data.user) {
-          throw new Error('Signup failed - no user created');
+        if (!response.ok) {
+          throw new Error(data.error || 'Signup failed');
         }
 
         // Show confirmation message
