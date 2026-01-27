@@ -206,8 +206,14 @@ app.post('/make-server-3e97d870/auth/login', rateLimitAuthMiddleware, async (c) 
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
-    // Check if email is verified
-    if (!data.user.email_confirmed_at) {
+    console.log('Login successful for:', email);
+    console.log('User object:', JSON.stringify(data.user, null, 2));
+    console.log('Email confirmed at:', data.user.email_confirmed_at);
+
+    // Check if email is verified - email_confirmed_at should be a timestamp
+    const isEmailConfirmed = data.user.email_confirmed_at && data.user.email_confirmed_at.length > 0;
+    
+    if (!isEmailConfirmed) {
       console.warn(`Login attempt with unverified email: ${email}`);
       return c.json({ 
         error: 'Please verify your email before logging in.',
