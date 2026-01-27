@@ -206,37 +206,12 @@ app.post('/make-server-3e97d870/auth/login', rateLimitAuthMiddleware, async (c) 
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
-    // Get fresh user data from admin API to check email confirmation
-    const { data: { user: freshUser }, error: userError } = await supabaseAdmin.auth.admin.getUserById(data.user.id);
-    
-    if (userError || !freshUser) {
-      console.error('Failed to fetch user:', userError);
-      return c.json({ error: 'Failed to verify user' }, 500);
-    }
-
-    console.log('Login user data:', {
-      id: freshUser.id,
-      email: freshUser.email,
-      email_confirmed_at: freshUser.email_confirmed_at,
-      isConfirmed: !!freshUser.email_confirmed_at
-    });
-
-    // Check if email is verified
-    if (!freshUser.email_confirmed_at) {
-      console.warn(`Login attempt with unverified email: ${email}`);
-      return c.json({ 
-        error: 'Please verify your email before logging in.',
-        emailVerified: false,
-        userId: freshUser.id
-      }, 403);
-    }
-
     return c.json({
-      userId: freshUser.id,
-      email: freshUser.email,
-      name: freshUser.user_metadata?.name || 'User',
+      userId: data.user.id,
+      email: data.user.email,
+      name: data.user.user_metadata?.name || 'User',
       accessToken: data.session.access_token,
-      emailVerified: true
+      emailVerified: !!data.user.email_confirmed_at
     });
   } catch (err: any) {
     console.error('Login error:', err);
