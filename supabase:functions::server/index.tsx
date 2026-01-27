@@ -75,12 +75,21 @@ async function rateLimitAuthMiddleware(c: any, next: any) {
 }
 
 // Enable CORS for all routes and methods
-// Harden CORS: only allow configured origin (set ORIGIN env var) or the production domain.
-const allowedOrigin = Deno.env.get('ORIGIN') || 'https://nightpage.space';
+// Allow localhost for development and production domain
+const allowedOrigins = [
+  'https://nightpage.space',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000'
+];
+const origin = Deno.env.get('ORIGIN');
+const corsOrigins = origin ? [origin] : allowedOrigins;
+
 app.use(
   "/*",
   cors({
-    origin: allowedOrigin,
+    origin: corsOrigins,
     allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info", "x-user-token"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
