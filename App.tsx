@@ -69,6 +69,14 @@ export default function App() {
     setUserEmail(email);
     setAccessToken(token);
     setCurrentView('landing');
+    // Save access token to localStorage for API calls
+    try {
+      localStorage.setItem('nightpage_access_token', token);
+      // Clear any old local entries from previous account
+      localStorage.removeItem('journalEntries');
+    } catch (e) {
+      console.warn('Failed to save access token to localStorage', e);
+    }
   };
 
   const handleLogout = () => {
