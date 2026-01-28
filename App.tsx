@@ -76,6 +76,13 @@ export default function App() {
     setUserEmail(null);
     setAccessToken(null);
     setCurrentView('landing');
+    // Clear all user-specific data from localStorage
+    try {
+      localStorage.removeItem('nightpage_access_token');
+      localStorage.removeItem('journalEntries');
+    } catch (e) {
+      console.warn('Failed to clear localStorage on logout', e);
+    }
   };
 
   const handleStartSession = () => {
