@@ -54,10 +54,6 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           throw new Error(data.error || 'Login failed');
         }
 
-        if (!data.emailVerified) {
-          throw new Error('Please verify your email before logging in.');
-        }
-
         onAuthSuccess(
           data.userId,
           data.email,
