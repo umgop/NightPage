@@ -69,13 +69,12 @@ export default function App() {
     setUserEmail(email);
     setAccessToken(token);
     setCurrentView('landing');
-    // Save access token to localStorage for API calls
+    // Save access token and userId to localStorage for API calls
     try {
       localStorage.setItem('nightpage_access_token', token);
-      // Clear any old local entries from previous account
-      localStorage.removeItem('journalEntries');
+      localStorage.setItem('nightpage_user_id', newUserId);
     } catch (e) {
-      console.warn('Failed to save access token to localStorage', e);
+      console.warn('Failed to save to localStorage', e);
     }
   };
 
@@ -84,10 +83,10 @@ export default function App() {
     setUserEmail(null);
     setAccessToken(null);
     setCurrentView('landing');
-    // Clear all user-specific data from localStorage
+    // Clear auth data from localStorage (keep user-specific entries)
     try {
       localStorage.removeItem('nightpage_access_token');
-      localStorage.removeItem('journalEntries');
+      localStorage.removeItem('nightpage_user_id');
     } catch (e) {
       console.warn('Failed to clear localStorage on logout', e);
     }

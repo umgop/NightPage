@@ -110,7 +110,7 @@ export function JournalSession({ onEnd, userId, accessToken }: JournalSessionPro
     }
   };
 
-  // Save entry to localStorage (backup)
+  // Save entry to localStorage (backup) - user-specific
   const saveEntryToLocalStorage = () => {
     if (!journalContent.trim()) return;
 
@@ -122,9 +122,10 @@ export function JournalSession({ onEnd, userId, accessToken }: JournalSessionPro
       duration: sessionDuration ? sessionDuration / 60 : 0,
     };
 
-    const existingEntries = JSON.parse(localStorage.getItem('journalEntries') || '[]');
+    const storageKey = `journalEntries_${userId}`;
+    const existingEntries = JSON.parse(localStorage.getItem(storageKey) || '[]');
     existingEntries.push(entry);
-    localStorage.setItem('journalEntries', JSON.stringify(existingEntries));
+    localStorage.setItem(storageKey, JSON.stringify(existingEntries));
   };
 
   // Download entry as text file
