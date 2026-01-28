@@ -40,7 +40,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
       if (isLogin) {
         // Call backend endpoint for login (enforces email verification)
         const response = await fetch(
-          `https://wqnniektmublmmghfeep.supabase.co/functions/v1/auth/login`,
+          `https://wqnniektmublmmghfeep.supabase.co/functions/v1/make-server-3e97d870/auth/login`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -71,7 +71,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
         // Call backend endpoint for signup (sends verification email)
         const response = await fetch(
-          `https://wqnniektmublmmghfeep.supabase.co/functions/v1/auth/signup`,
+          `https://wqnniektmublmmghfeep.supabase.co/functions/v1/make-server-3e97d870/auth/signup`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

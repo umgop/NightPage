@@ -35,7 +35,7 @@ export function JournalHistory({ onClose }: JournalHistoryProps) {
       // Try to load from cloud first
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/journal/entries`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-3e97d870/journal/entries`,
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`

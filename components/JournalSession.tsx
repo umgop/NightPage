@@ -83,7 +83,7 @@ export function JournalSession({ onEnd, userId, accessToken }: JournalSessionPro
       };
 
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/journal/save`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-3e97d870/journal/save`,
         {
           method: 'POST',
           headers: {
