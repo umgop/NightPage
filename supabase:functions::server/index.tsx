@@ -151,7 +151,7 @@ async function verifyUser(authHeader: string | null) {
 }
 
 // Auth endpoints
-app.post('/make-server-3e97d870/auth/signup', rateLimitAuthMiddleware, async (c) => {
+app.post('/auth/signup', rateLimitAuthMiddleware, async (c) => {
   try {
     const { email, password, name } = await c.req.json();
 
@@ -188,7 +188,7 @@ app.post('/make-server-3e97d870/auth/signup', rateLimitAuthMiddleware, async (c)
   }
 });
 
-app.post('/make-server-3e97d870/auth/login', rateLimitAuthMiddleware, async (c) => {
+app.post('/auth/login', rateLimitAuthMiddleware, async (c) => {
   try {
     const { email, password } = await c.req.json();
 
@@ -220,7 +220,7 @@ app.post('/make-server-3e97d870/auth/login', rateLimitAuthMiddleware, async (c) 
 });
 
 // Journal entries endpoints
-app.post('/make-server-3e97d870/journal/save', async (c) => {
+app.post('/journal/save', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
     const user = await verifyUser(authHeader);
@@ -245,7 +245,7 @@ app.post('/make-server-3e97d870/journal/save', async (c) => {
 });
 
 // Update journal entry (for renaming)
-app.put('/make-server-3e97d870/journal/entry/:date', async (c) => {
+app.put('/journal/entry/:date', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
     const user = await verifyUser(authHeader);
@@ -273,7 +273,7 @@ app.put('/make-server-3e97d870/journal/entry/:date', async (c) => {
   }
 });
 
-app.get('/make-server-3e97d870/journal/entries', async (c) => {
+app.get('/journal/entries', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
     const user = await verifyUser(authHeader);
@@ -291,7 +291,7 @@ app.get('/make-server-3e97d870/journal/entries', async (c) => {
   }
 });
 
-app.delete('/make-server-3e97d870/journal/entry/:date', async (c) => {
+app.delete('/journal/entry/:date', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
     const user = await verifyUser(authHeader);
@@ -309,7 +309,7 @@ app.delete('/make-server-3e97d870/journal/entry/:date', async (c) => {
 });
 
 // Admin endpoints - master access
-app.get('/make-server-3e97d870/admin/users', async (c) => {
+app.get('/admin/users', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
     const user = await verifyUser(authHeader);
@@ -341,7 +341,7 @@ app.get('/make-server-3e97d870/admin/users', async (c) => {
   }
 });
 
-app.get('/make-server-3e97d870/admin/user/:userId/entries', async (c) => {
+app.get('/admin/user/:userId/entries', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
     const user = await verifyUser(authHeader);
@@ -370,7 +370,7 @@ app.get("/make-server-3e97d870/health", (c) => {
 });
 
 // AI Journal Assistant endpoint with daily rate limiting (3 prompts per day)
-app.post('/make-server-3e97d870/ai/prompt', async (c) => {
+app.post('/ai/prompt', async (c) => {
   try {
     console.log('=== AI PROMPT ENDPOINT CALLED ===');
     
@@ -487,7 +487,7 @@ app.post('/make-server-3e97d870/ai/prompt', async (c) => {
 // Stripe Payment Endpoints
 
 // Create Stripe checkout session for $5 one-time payment
-app.post('/make-server-3e97d870/payment/create-checkout', async (c) => {
+app.post('/payment/create-checkout', async (c) => {
   try {
     const { email, userId } = await c.req.json();
     
@@ -538,7 +538,7 @@ app.post('/make-server-3e97d870/payment/create-checkout', async (c) => {
 });
 
 // Verify payment status
-app.post('/make-server-3e97d870/payment/verify', async (c) => {
+app.post('/payment/verify', async (c) => {
   try {
     const { sessionId } = await c.req.json();
     
@@ -585,7 +585,7 @@ app.post('/make-server-3e97d870/payment/verify', async (c) => {
 });
 
 // Check user's pro status
-app.get('/make-server-3e97d870/payment/status', async (c) => {
+app.get('/payment/status', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
     

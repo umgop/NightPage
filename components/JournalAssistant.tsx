@@ -130,9 +130,9 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
       const userToken = session.access_token;
       console.log('Session user ID:', session.user.id);
       console.log('User token length:', userToken.length);
-      console.log('Making request to:', `https://${projectId}.supabase.co/functions/v1/make-server-3e97d870/ai/prompt`);
+      console.log('Making request to:', `https://${projectId}.supabase.co/functions/v1/ai/prompt`);
       
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-3e97d870/ai/prompt`, {
+      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/ai/prompt`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
