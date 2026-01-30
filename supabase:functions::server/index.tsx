@@ -239,6 +239,55 @@ app.post('/auth/login', rateLimitAuthMiddleware, async (c) => {
   }
 });
 
+// Resend verification email
+app.post('/auth/resend-verification', rateLimitAuthMiddleware, async (c) => {
+  try {
+    const { email } = await c.req.json();
+
+    if (!email) {
+      return c.json({ error: 'Email is required' }, 400);
+    }
+
+    // Check if user exists and is unverified
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const user = existingUsers?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    
+    if (!user) {
+      // Don't reveal if email exists or not for security
+      return c.json({ 
+        success: true, 
+        message: 'If an account exists with this email, a verification link has been sent.' 
+      });
+    }
+
+    if (user.email_confirmed_at) {
+      return c.json({ error: 'This email is already verified. You can log in.' }, 400);
+    }
+
+    // Resend verification email
+    const { error } = await supabaseAnon.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo: 'https://nightpage.space'
+      }
+    });
+
+    if (error) {
+      console.error('Resend verification error:', error);
+      return c.json({ error: 'Failed to send verification email. Please try again later.' }, 500);
+    }
+
+    return c.json({ 
+      success: true, 
+      message: 'Verification email sent! Please check your inbox.' 
+    });
+  } catch (err: any) {
+    console.error('Resend verification error:', err);
+    return c.json({ error: err.message || 'Failed to resend verification' }, 500);
+  }
+});
+
 // Journal entries endpoints
 app.post('/journal/save', async (c) => {
   try {

@@ -30,6 +30,40 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [signupEmailSent, setSignupEmailSent] = useState(false);
+  const [signupEmail, setSignupEmail] = useState(''); // Store email for resend
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
+  const handleResendVerification = async () => {
+    if (!signupEmail) return;
+    
+    setResendLoading(true);
+    setResendSuccess(false);
+    setError('');
+
+    try {
+      const response = await fetch(
+        `https://wqnniektmublmmghfeep.supabase.co/functions/v1/make-server-3e97d870/auth/resend-verification`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: signupEmail }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resend verification email');
+      }
+
+      setResendSuccess(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend verification email');
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +115,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           throw new Error(data.error || 'Signup failed');
         }
 
-        // Show confirmation message
+        // Show confirmation message and store email for resend
+        setSignupEmail(email);
         setSignupEmailSent(true);
         setEmail('');
         setPassword('');
@@ -188,10 +223,20 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
               style={{
                 color: 'rgba(138, 129, 128, 0.8)',
                 fontFamily: '"Spectral", serif',
-                marginBottom: '24px'
+                marginBottom: '8px'
               }}
             >
-              We've sent a confirmation link to your email. Click it to verify and create your account.
+              We've sent a confirmation link to:
+            </p>
+            <p
+              style={{
+                color: '#f2f4f3',
+                fontFamily: '"Spectral", serif',
+                marginBottom: '24px',
+                fontWeight: '500'
+              }}
+            >
+              {signupEmail}
             </p>
             <div
               style={{
@@ -203,12 +248,82 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
               }}
             >
               <p style={{ fontSize: '14px', color: 'rgba(100, 200, 255, 0.9)', margin: 0 }}>
-                Check your inbox and click the confirmation link to proceed.
+                Click the confirmation link in your email to activate your account. Check spam if you don't see it.
               </p>
             </div>
+
+            {/* Error message */}
+            {error && (
+              <div
+                style={{
+                  background: 'rgba(255, 100, 100, 0.1)',
+                  border: '1px solid rgba(255, 100, 100, 0.3)',
+                  borderRadius: '4px',
+                  padding: '12px',
+                  marginBottom: '16px'
+                }}
+              >
+                <p style={{ fontSize: '14px', color: 'rgba(255, 100, 100, 0.9)', margin: 0 }}>
+                  {error}
+                </p>
+              </div>
+            )}
+
+            {/* Success message for resend */}
+            {resendSuccess && (
+              <div
+                style={{
+                  background: 'rgba(100, 255, 150, 0.1)',
+                  border: '1px solid rgba(100, 255, 150, 0.3)',
+                  borderRadius: '4px',
+                  padding: '12px',
+                  marginBottom: '16px'
+                }}
+              >
+                <p style={{ fontSize: '14px', color: 'rgba(100, 255, 150, 0.9)', margin: 0 }}>
+                  Verification email sent! Check your inbox.
+                </p>
+              </div>
+            )}
+
+            {/* Resend button */}
+            <button
+              onClick={handleResendVerification}
+              disabled={resendLoading}
+              style={{
+                width: '100%',
+                background: 'rgba(163, 149, 148, 0.15)',
+                border: '1px solid rgba(163, 149, 148, 0.3)',
+                color: '#f2f4f3',
+                padding: '12px',
+                borderRadius: '4px',
+                cursor: resendLoading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+                fontFamily: '"Libre Baskerville", serif',
+                fontSize: '14px',
+                marginBottom: '12px',
+                opacity: resendLoading ? 0.6 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!resendLoading) {
+                  const el = e.currentTarget as HTMLButtonElement;
+                  el.style.background = 'rgba(163, 149, 148, 0.25)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                const el = e.currentTarget as HTMLButtonElement;
+                el.style.background = 'rgba(163, 149, 148, 0.15)';
+              }}
+            >
+              {resendLoading ? 'Sending...' : "Didn't receive it? Resend Email"}
+            </button>
+
             <button
               onClick={() => {
                 setSignupEmailSent(false);
+                setSignupEmail('');
+                setResendSuccess(false);
+                setError('');
                 setIsLogin(true);
               }}
               style={{
