@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Sparkles, X, Loader2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { supabase } from '../utils/supabase/client';
 
 interface JournalAssistantProps {
   onInsertPrompt: (text: string) => void;
@@ -119,16 +118,14 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
     try {
       console.log('=== AI REQUEST DEBUG ===');
       
-      // Get fresh token from Supabase session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      // Use the accessToken passed from parent (stored in sessionStorage)
+      const userToken = accessToken;
       
-      if (sessionError || !session) {
-        console.error('Session error:', sessionError);
+      if (!userToken) {
+        console.error('No access token available');
         throw new Error('Please sign in again to use AI features');
       }
 
-      const userToken = session.access_token;
-      console.log('Session user ID:', session.user.id);
       console.log('User token length:', userToken.length);
       console.log('Making request to:', `https://${projectId}.supabase.co/functions/v1/make-server-3e97d870/ai/prompt`);
       
