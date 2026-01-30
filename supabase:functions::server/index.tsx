@@ -159,13 +159,23 @@ app.post('/auth/signup', rateLimitAuthMiddleware, async (c) => {
       return c.json({ error: 'Email, password, and name are required' }, 400);
     }
 
-    // Create user with email verification required
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    // Check if email already exists
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const emailExists = existingUsers?.users?.some(u => u.email?.toLowerCase() === email.toLowerCase());
+    
+    if (emailExists) {
+      return c.json({ error: 'An account with this email already exists' }, 400);
+    }
+
+    // Use signUp (not admin.createUser) - this sends verification email
+    // Account won't be usable until user clicks verification link
+    const { data, error } = await supabaseAnon.auth.signUp({
       email,
       password,
-      user_metadata: { name },
-      // Email verification is required - user must verify before full access
-      email_confirm: false
+      options: {
+        data: { name },
+        emailRedirectTo: 'https://nightpage.space'
+      }
     });
 
     if (error) {
@@ -173,13 +183,15 @@ app.post('/auth/signup', rateLimitAuthMiddleware, async (c) => {
       return c.json({ error: error.message }, 400);
     }
 
-    // Do NOT auto sign-in - user must verify email first
+    if (!data.user) {
+      return c.json({ error: 'Failed to create account' }, 500);
+    }
+
+    // Account created but not verified yet - user must click email link
     return c.json({
       success: true,
-      message: 'Account created! Please verify your email to continue.',
-      userId: data.user.id,
+      message: 'Verification email sent! Please check your inbox and click the link to activate your account.',
       email: data.user.email,
-      name: data.user.user_metadata.name,
       emailVerified: false
     });
   } catch (err: any) {
@@ -206,12 +218,20 @@ app.post('/auth/login', rateLimitAuthMiddleware, async (c) => {
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
+    // Check if email is verified - must verify before login allowed
+    if (!data.user.email_confirmed_at) {
+      return c.json({ 
+        error: 'Please verify your email before logging in. Check your inbox for the verification link.',
+        emailVerified: false 
+      }, 403);
+    }
+
     return c.json({
       userId: data.user.id,
       email: data.user.email,
       name: data.user.user_metadata?.name || 'User',
       accessToken: data.session.access_token,
-      emailVerified: !!data.user.email_confirmed_at
+      emailVerified: true
     });
   } catch (err: any) {
     console.error('Login error:', err);
