@@ -26,7 +26,7 @@ export default function App() {
           setAccessToken(session.access_token);
           // Persist token so other components can access cloud APIs after reload
           try {
-            localStorage.setItem('nightpage_access_token', session.access_token);
+            sessionStorage.setItem('nightpage_access_token', session.access_token);
           } catch (e) {
             console.warn('Failed to persist access token to localStorage', e);
           }
@@ -45,7 +45,7 @@ export default function App() {
         setUserEmail(session.user.email || null);
         setAccessToken(session.access_token);
         try {
-          localStorage.setItem('nightpage_access_token', session.access_token);
+          sessionStorage.setItem('nightpage_access_token', session.access_token);
         } catch (e) {
           console.warn('Failed to persist access token to localStorage', e);
         }
@@ -54,7 +54,7 @@ export default function App() {
         setUserEmail(null);
         setAccessToken(null);
         try {
-          localStorage.removeItem('nightpage_access_token');
+          sessionStorage.removeItem('nightpage_access_token');
         } catch (e) {
           console.warn('Failed to remove access token from localStorage', e);
         }
@@ -71,8 +71,8 @@ export default function App() {
     setCurrentView('landing');
     // Save access token and userId to localStorage for API calls
     try {
-      localStorage.setItem('nightpage_access_token', token);
-      localStorage.setItem('nightpage_user_id', newUserId);
+      sessionStorage.setItem('nightpage_access_token', token);
+      sessionStorage.setItem('nightpage_user_id', newUserId);
     } catch (e) {
       console.warn('Failed to save to localStorage', e);
     }
@@ -85,8 +85,8 @@ export default function App() {
     setCurrentView('landing');
     // Clear auth data from localStorage (keep user-specific entries)
     try {
-      localStorage.removeItem('nightpage_access_token');
-      localStorage.removeItem('nightpage_user_id');
+      sessionStorage.removeItem('nightpage_access_token');
+      sessionStorage.removeItem('nightpage_user_id');
     } catch (e) {
       console.warn('Failed to clear localStorage on logout', e);
     }

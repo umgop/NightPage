@@ -50,11 +50,11 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
     try {
       const now = new Date();
       const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
-      const stored = localStorage.getItem('nightpage_ai_prompts');
+      const stored = sessionStorage.getItem('nightpage_ai_prompts');
       
       if (!stored) {
         // First time, set to 3 prompts
-        localStorage.setItem('nightpage_ai_prompts', JSON.stringify({ date: today, remaining: 3 }));
+        sessionStorage.setItem('nightpage_ai_prompts', JSON.stringify({ date: today, remaining: 3 }));
         setPromptsRemaining(3);
         setIsRateLimited(false);
         return;
@@ -63,7 +63,7 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
       const data = JSON.parse(stored);
       if (data.date !== today) {
         // New day, reset to 3
-        localStorage.setItem('nightpage_ai_prompts', JSON.stringify({ date: today, remaining: 3 }));
+        sessionStorage.setItem('nightpage_ai_prompts', JSON.stringify({ date: today, remaining: 3 }));
         setPromptsRemaining(3);
         setIsRateLimited(false);
       } else {
@@ -82,7 +82,7 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
     try {
       const now = new Date();
       const today = now.toISOString().split('T')[0];
-      const stored = localStorage.getItem('nightpage_ai_prompts');
+      const stored = sessionStorage.getItem('nightpage_ai_prompts');
       const data = stored ? JSON.parse(stored) : { date: today, remaining: 3 };
 
       if (data.date !== today) {
@@ -95,7 +95,7 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
         data.remaining -= 1;
       }
 
-      localStorage.setItem('nightpage_ai_prompts', JSON.stringify(data));
+      sessionStorage.setItem('nightpage_ai_prompts', JSON.stringify(data));
       setPromptsRemaining(data.remaining);
       setIsRateLimited(data.remaining <= 0);
       return true;

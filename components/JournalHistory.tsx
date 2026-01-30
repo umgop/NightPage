@@ -29,8 +29,8 @@ export function JournalHistory({ onClose }: JournalHistoryProps) {
   }, []);
 
   const loadEntries = async () => {
-    const accessToken = localStorage.getItem('nightpage_access_token');
-    const userId = localStorage.getItem('nightpage_user_id');
+    const accessToken = sessionStorage.getItem('nightpage_access_token');
+    const userId = sessionStorage.getItem('nightpage_user_id');
     
     if (accessToken) {
       // Try to load from cloud first
@@ -183,7 +183,7 @@ export function JournalHistory({ onClose }: JournalHistoryProps) {
   const deleteEntry = (date: string) => {
     if (confirm('Are you sure you want to delete this entry? This cannot be undone.')) {
       const updated = entries.filter(e => e.date !== date);
-      const userId = localStorage.getItem('nightpage_user_id');
+      const userId = sessionStorage.getItem('nightpage_user_id');
       const storageKey = userId ? `journalEntries_${userId}` : 'journalEntries';
       localStorage.setItem(storageKey, JSON.stringify(updated.reverse()));
       loadEntries();
@@ -217,7 +217,7 @@ export function JournalHistory({ onClose }: JournalHistoryProps) {
 
     const updatedEntries = entries.map(e => e.date === editingEntry.date ? updatedEntry : e);
     setEntries(updatedEntries);
-    const userId = localStorage.getItem('nightpage_user_id');
+    const userId = sessionStorage.getItem('nightpage_user_id');
     const storageKey = userId ? `journalEntries_${userId}` : 'journalEntries';
     localStorage.setItem(storageKey, JSON.stringify(updatedEntries.reverse()));
     setEditingEntry(null);
