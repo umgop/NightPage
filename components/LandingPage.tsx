@@ -197,6 +197,19 @@ export function LandingPage({ onStart }: LandingPageProps) {
         }}>
           YOUR NIGHTLY RITUAL AWAITS
         </p>
+
+        {/* Privacy statement */}
+        <p style={{
+          marginTop: 24,
+          fontSize: 13,
+          color: 'rgba(242,244,243,0.4)',
+          fontFamily: '"Merriweather", serif',
+          fontStyle: 'italic',
+          opacity: isAnimated ? 1 : 0,
+          transition: 'opacity 1200ms ease 1200ms'
+        }}>
+          Your words only exist for this moment.
+        </p>
       </div>
     </div>
   );
