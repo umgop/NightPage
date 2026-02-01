@@ -123,10 +123,11 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
       
       if (!userToken) {
         console.error('No access token available');
-        throw new Error('Please sign in again to use AI features');
+        throw new Error('No access token - please sign in again');
       }
 
-      console.log('User token length:', userToken.length);
+      console.log('User token present:', !!userToken);
+      console.log('User token first 20 chars:', userToken.substring(0, 20));
       console.log('Making request to:', `https://${projectId}.supabase.co/functions/v1/make-server-3e97d870/ai/prompt`);
       
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-3e97d870/ai/prompt`, {
@@ -178,7 +179,8 @@ export function JournalAssistant({ onInsertPrompt, currentContent, accessToken }
         stack: err.stack,
         name: err.name
       });
-      setSuggestion('Failed to get AI suggestion. Try signing out and back in.');
+      // Show the actual error message for debugging
+      setSuggestion(`Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
