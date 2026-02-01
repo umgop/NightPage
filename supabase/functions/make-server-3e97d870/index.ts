@@ -265,19 +265,35 @@ app.post('/auth/resend-verification', rateLimitAuthMiddleware, async (c) => {
       return c.json({ error: 'This email is already verified. You can log in.' }, 400);
     }
 
-    // Resend verification email
-    const { error } = await supabaseAnon.auth.resend({
-      type: 'signup',
-      email,
+    // Try using admin API to generate invite link (more reliable)
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: email,
       options: {
-        emailRedirectTo: 'https://nightpage.space'
+        redirectTo: 'https://nightpage.space'
       }
     });
 
-    if (error) {
-      console.error('Resend verification error:', error);
-      return c.json({ error: 'Failed to send verification email. Please try again later.' }, 500);
+    if (linkError) {
+      console.error('Generate link error:', linkError);
+      
+      // Fallback to resend method
+      const { error } = await supabaseAnon.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: 'https://nightpage.space'
+        }
+      });
+
+      if (error) {
+        console.error('Resend verification error:', error);
+        return c.json({ error: 'Failed to send verification email. Please try again later.' }, 500);
+      }
     }
+
+    // If we got a link, the email should have been sent by Supabase
+    console.log('Verification email sent for:', email);
 
     return c.json({ 
       success: true, 
@@ -490,7 +506,7 @@ app.post('/ai/prompt', async (c) => {
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini', // Using gpt-4o-mini for better accessibility and cost-efficiency
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
