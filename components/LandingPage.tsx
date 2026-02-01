@@ -208,7 +208,7 @@ export function LandingPage({ onStart }: LandingPageProps) {
           opacity: isAnimated ? 1 : 0,
           transition: 'opacity 1200ms ease 1200ms'
         }}>
-          Your words only exist for this moment.
+          Your privacy is guaranteed.
         </p>
       </div>
     </div>
